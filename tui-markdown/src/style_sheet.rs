@@ -96,6 +96,21 @@ pub trait StyleSheet: Clone + Send + Sync + 'static {
     fn definition_desc(&self) -> Style {
         Style::default()
     }
+
+    /// Style for horizontal rules (`---`).
+    fn rule(&self) -> Style {
+        Style::new().dark_gray()
+    }
+
+    /// Style for code block fence markers (`` ``` ``).
+    fn code_fence(&self) -> Style {
+        Style::new().dark_gray()
+    }
+
+    /// Style for code block line number gutters.
+    fn code_line_number(&self) -> Style {
+        Style::new().dark_gray()
+    }
 }
 
 /// The default style set

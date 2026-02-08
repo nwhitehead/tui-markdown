@@ -165,7 +165,7 @@ fn image_with_alt() {
     let image_style = Style::new().dim().italic();
     assert_eq!(
         text,
-        Text::from(Line::from(Span::styled("\u{1F5BC} Alt text", image_style)))
+        Text::from(Line::from(Span::styled("[img] Alt text", image_style)))
     );
 }
 
@@ -175,7 +175,7 @@ fn image_without_alt() {
     let image_style = Style::new().dim().italic();
     assert_eq!(
         text,
-        Text::from(Line::from(Span::styled("\u{1F5BC} url.png", image_style)))
+        Text::from(Line::from(Span::styled("[img] url.png", image_style)))
     );
 }
 
@@ -187,7 +187,7 @@ fn image_in_paragraph() {
         text,
         Text::from(Line::from_iter([
             Span::from("before "),
-            Span::styled("\u{1F5BC} pic", image_style),
+            Span::styled("[img] pic", image_style),
             Span::from(" after"),
         ]))
     );
@@ -202,7 +202,7 @@ fn blockquote_simple() {
     let bq_style = Style::new().green();
     assert_eq!(
         tui_markdown::from_str("> Hello"),
-        Text::from(Line::from_iter([">", " ", "Hello"]).style(bq_style))
+        Text::from(Line::from_iter(["\u{2502}", " ", "Hello"]).style(bq_style))
     );
 }
 
@@ -304,7 +304,17 @@ fn fenced_code_block_with_lang() {
 #[test]
 fn horizontal_rule() {
     let text = tui_markdown::from_str("above\n\n---\n\nbelow");
-    assert_eq!(text, Text::from_iter(["above", "", "---", "", "below"]));
+    let rule_str = "\u{2500}".repeat(40);
+    assert_eq!(
+        text,
+        Text::from_iter([
+            Line::from("above"),
+            Line::default(),
+            Line::styled(rule_str, Style::new().dark_gray()),
+            Line::default(),
+            Line::from("below"),
+        ])
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -492,17 +502,28 @@ fn display_math() {
 }
 
 #[test]
-fn inline_math_wrapped_in_dollars() {
+fn inline_math_has_separate_delimiters() {
     let text = tui_markdown::from_str("$\\alpha$");
     let line = &text.lines[0];
-    let math_span = line
+    // Dollar delimiters are now separate dim spans.
+    let dollar_spans: Vec<_> = line
+        .spans
+        .iter()
+        .filter(|s| s.content.as_ref() == "$")
+        .collect();
+    assert_eq!(
+        dollar_spans.len(),
+        2,
+        "should have two separate $ delimiter spans"
+    );
+    let content_span = line
         .spans
         .iter()
         .find(|s| s.content.contains("\\alpha"))
-        .expect("math span should exist");
+        .expect("math content span should exist");
     assert!(
-        math_span.content.starts_with('$') && math_span.content.ends_with('$'),
-        "inline math should be wrapped in dollar signs"
+        !content_span.content.starts_with('$'),
+        "content span should not contain delimiters"
     );
 }
 
@@ -581,11 +602,11 @@ fn definition_list_indentation() {
         .iter()
         .find(|l| l.spans.iter().any(|s| s.content.contains("Description")))
         .expect("should have definition line");
-    let has_indent = line_with_desc
+    let has_colon_prefix = line_with_desc
         .spans
         .iter()
-        .any(|s| s.content.contains("  "));
-    assert!(has_indent, "definition should be indented");
+        .any(|s| s.content.contains(": "));
+    assert!(has_colon_prefix, "definition should have colon prefix");
 }
 
 #[test]
@@ -676,7 +697,7 @@ fn fixture_has_images() {
     let text = tui_markdown::from_str(markdown);
     let flat = collect_text(&text);
     assert!(
-        flat.contains("Alt text for image") || flat.contains("\u{1F5BC}"),
+        flat.contains("Alt text for image") || flat.contains("[img]"),
         "fixture should contain image rendering"
     );
 }
@@ -761,6 +782,80 @@ fn snapshot_comprehensive_fixture() {
     let markdown = include_str!("fixtures/comprehensive.md");
     let text = tui_markdown::from_str(markdown);
     insta::assert_debug_snapshot!(text);
+}
+
+// ---------------------------------------------------------------------------
+// Parse API (MarkdownContent)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn parse_returns_content_blocks() {
+    let content = tui_markdown::parse("Hello world");
+    assert!(
+        !content.blocks.is_empty(),
+        "parse should return at least one block"
+    );
+    match &content.blocks[0] {
+        tui_markdown::MarkdownBlock::Text(text) => {
+            let flat: String = text
+                .lines
+                .iter()
+                .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+                .collect();
+            assert!(flat.contains("Hello world"));
+        }
+        _ => panic!("expected Text block"),
+    }
+}
+
+#[test]
+fn parse_separates_images_as_blocks() {
+    let content = tui_markdown::parse("Before\n\n![photo](pic.png)\n\nAfter");
+    let image_count = content
+        .blocks
+        .iter()
+        .filter(|b| matches!(b, tui_markdown::MarkdownBlock::Image { .. }))
+        .count();
+    assert_eq!(image_count, 1, "should have one image block");
+
+    // Verify the image block has the correct URL and alt text.
+    let image = content
+        .blocks
+        .iter()
+        .find_map(|b| match b {
+            tui_markdown::MarkdownBlock::Image { url, alt, .. } => Some((url, alt)),
+            _ => None,
+        })
+        .expect("should have an image block");
+    assert_eq!(image.0, "pic.png");
+    assert_eq!(image.1, "photo");
+}
+
+#[test]
+fn parse_into_text_flattens_images() {
+    let content = tui_markdown::parse("Before\n\n![photo](pic.png)\n\nAfter");
+    let text = content.into_text();
+    let flat: String = text
+        .lines
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+        .collect();
+    assert!(flat.contains("Before"), "should contain text before image");
+    assert!(flat.contains("After"), "should contain text after image");
+    assert!(
+        flat.contains("[img]"),
+        "flattened image should use [img] indicator"
+    );
+}
+
+#[test]
+fn parse_no_images_returns_single_text_block() {
+    let content = tui_markdown::parse("Just text");
+    assert_eq!(content.blocks.len(), 1);
+    assert!(matches!(
+        &content.blocks[0],
+        tui_markdown::MarkdownBlock::Text(_)
+    ));
 }
 
 // ---------------------------------------------------------------------------

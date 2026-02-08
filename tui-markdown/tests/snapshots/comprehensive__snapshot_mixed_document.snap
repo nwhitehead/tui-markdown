@@ -28,14 +28,14 @@ Text::from_iter([
     ]),
     Line::default(),
     Line::from_iter([
-        Span::from(">"),
+        Span::from("│"),
         Span::from(" "),
         Span::from("A quote"),
     ]).green(),
     Line::default(),
-    Line::from("---"),
+    Line::from("────────────────────────────────────────").dark_gray(),
     Line::default(),
-    Line::from(Span::from("🖼 img").dim().italic()),
+    Line::from(Span::from("[img] img").dim().italic()),
     Line::default(),
     Line::from_iter([
         Span::from("link").blue().underlined(),

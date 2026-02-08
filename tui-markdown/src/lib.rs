@@ -52,9 +52,11 @@ use syntect::{
 };
 use tracing::{debug, instrument, warn};
 
+pub use crate::content::{MarkdownBlock, MarkdownContent};
 pub use crate::options::Options;
 pub use crate::style_sheet::{DefaultStyleSheet, StyleSheet};
 
+mod content;
 mod images;
 mod options;
 mod style_sheet;
@@ -102,6 +104,41 @@ where
     let mut writer = TextWriter::new(parser, options.styles.clone());
     writer.run();
     writer.text
+}
+
+/// Parse Markdown `input` into a [`MarkdownContent`] using the default [`Options`].
+///
+/// Unlike [`from_str`], images are represented as separate [`MarkdownBlock::Image`] blocks
+/// rather than being flattened to alt text. This allows consumers to render images using
+/// terminal image protocols or custom rendering.
+pub fn parse(input: &str) -> MarkdownContent<'_> {
+    parse_with_options(input, &Options::default())
+}
+
+/// Parse Markdown `input` into a [`MarkdownContent`] using the supplied [`Options`].
+///
+/// See [`parse`] for details on the difference from [`from_str_with_options`].
+pub fn parse_with_options<'a, S>(input: &'a str, options: &Options<S>) -> MarkdownContent<'a>
+where
+    S: StyleSheet,
+{
+    let mut parse_opts = ParseOptions::empty();
+    parse_opts.insert(ParseOptions::ENABLE_STRIKETHROUGH);
+    parse_opts.insert(ParseOptions::ENABLE_TASKLISTS);
+    parse_opts.insert(ParseOptions::ENABLE_HEADING_ATTRIBUTES);
+    parse_opts.insert(ParseOptions::ENABLE_YAML_STYLE_METADATA_BLOCKS);
+    parse_opts.insert(ParseOptions::ENABLE_SUPERSCRIPT);
+    parse_opts.insert(ParseOptions::ENABLE_SUBSCRIPT);
+    parse_opts.insert(ParseOptions::ENABLE_TABLES);
+    parse_opts.insert(ParseOptions::ENABLE_GFM);
+    parse_opts.insert(ParseOptions::ENABLE_FOOTNOTES);
+    parse_opts.insert(ParseOptions::ENABLE_MATH);
+    parse_opts.insert(ParseOptions::ENABLE_DEFINITION_LIST);
+    let parser = Parser::new_ext(input, parse_opts);
+
+    let mut writer = TextWriter::with_image_blocks(parser, options.styles.clone());
+    writer.run();
+    writer.into_content()
 }
 
 // Heading attributes collected from pulldown-cmark to render after the heading text.
@@ -199,6 +236,24 @@ struct TextWriter<'a, I, S: StyleSheet> {
     /// Whether we are inside a definition list.
     in_definition_list: bool,
 
+    /// Whether we are inside a footnote definition (suppresses paragraph newline).
+    in_footnote_definition: bool,
+
+    /// Current line number inside a code block (Some(n) when inside, None otherwise).
+    code_line_number: Option<u32>,
+
+    /// Whether to emit image blocks instead of inline alt text.
+    emit_image_blocks: bool,
+
+    /// Accumulated content blocks when `emit_image_blocks` is true.
+    content_blocks: Vec<MarkdownBlock<'a>>,
+
+    /// Whether we are collecting alt text for an image block.
+    collecting_image_alt: bool,
+
+    /// Buffer for collecting image alt text.
+    image_alt_buffer: String,
+
     needs_newline: bool,
 }
 
@@ -213,6 +268,14 @@ where
     S: StyleSheet,
 {
     fn new(iter: I, styles: S) -> Self {
+        Self::create(iter, styles, false)
+    }
+
+    fn with_image_blocks(iter: I, styles: S) -> Self {
+        Self::create(iter, styles, true)
+    }
+
+    fn create(iter: I, styles: S, emit_image_blocks: bool) -> Self {
         Self {
             iter,
             text: Text::default(),
@@ -231,6 +294,12 @@ where
             in_metadata_block: false,
             table_builder: None,
             in_definition_list: false,
+            in_footnote_definition: false,
+            code_line_number: None,
+            emit_image_blocks,
+            content_blocks: Vec::new(),
+            collecting_image_alt: false,
+            image_alt_buffer: String::new(),
         }
     }
 
@@ -238,6 +307,24 @@ where
         debug!("Running text writer");
         while let Some(event) = self.iter.next() {
             self.handle_event(event);
+        }
+        if self.emit_image_blocks {
+            self.flush_text_block();
+        }
+    }
+
+    /// Flush the current accumulated text into a `MarkdownBlock::Text` block.
+    fn flush_text_block(&mut self) {
+        let text = std::mem::take(&mut self.text);
+        if !text.lines.is_empty() {
+            self.content_blocks.push(MarkdownBlock::Text(text));
+        }
+    }
+
+    /// Consume the writer and return a [`MarkdownContent`] with all accumulated blocks.
+    fn into_content(self) -> MarkdownContent<'a> {
+        MarkdownContent {
+            blocks: self.content_blocks,
         }
     }
 
@@ -322,6 +409,10 @@ where
     }
 
     fn start_paragraph(&mut self) {
+        // Inside a footnote definition, content should flow on the same line as [label]:
+        if self.in_footnote_definition {
+            return;
+        }
         // Insert an empty line between paragraphs if there is at least one line of text already.
         if self.needs_newline {
             self.push_line(Line::default());
@@ -377,15 +468,18 @@ where
                 BlockQuoteKind::Caution => ("\u{1F534}", "caution"),
             };
             let style = self.styles.alert(kind_str);
-            self.line_prefixes.push(Span::from(">"));
+            self.line_prefixes.push(Span::from("\u{2502}"));
             self.line_styles.push(style);
             // Render the alert header line.
             let label = kind_str[..1].to_uppercase() + &kind_str[1..];
             self.push_line(Line::default());
-            self.push_span(Span::styled(format!("{icon} {label}"), style.bold()));
+            self.push_span(Span::styled(
+                format!("{icon} {label}"),
+                style.patch(Style::new().bold()),
+            ));
             self.needs_newline = false;
         } else {
-            self.line_prefixes.push(Span::from(">"));
+            self.line_prefixes.push(Span::from("\u{2502}"));
             self.line_styles.push(self.styles.blockquote());
         }
     }
@@ -404,6 +498,12 @@ where
             return;
         }
 
+        // Capture alt text for image blocks instead of rendering.
+        if self.collecting_image_alt {
+            self.image_alt_buffer.push_str(&text);
+            return;
+        }
+
         // Track that we received alt text while inside an image.
         if self.image_url.is_some() {
             self.image_had_alt = true;
@@ -418,7 +518,19 @@ where
                 .collect();
 
             for line in text.lines {
-                self.text.push_line(line);
+                if let Some(num) = &mut self.code_line_number {
+                    *num += 1;
+                    let gutter_style = self.styles.code_line_number();
+                    let gutter = Span::styled(format!("{:>3} \u{2502} ", num), gutter_style);
+                    let mut new_line = Line::default();
+                    new_line.push_span(gutter);
+                    for span in line.spans {
+                        new_line.push_span(span);
+                    }
+                    self.text.push_line(new_line);
+                } else {
+                    self.text.push_line(line);
+                }
             }
             self.needs_newline = false;
             return;
@@ -431,6 +543,14 @@ where
             }
             if matches!(position, Position::Middle | Position::Last) {
                 self.push_line(Line::default());
+            }
+
+            // Add line number gutter for code blocks.
+            if let Some(num) = &mut self.code_line_number {
+                *num += 1;
+                let gutter_style = self.styles.code_line_number();
+                let gutter = Span::styled(format!("{:>3} \u{2502} ", num), gutter_style);
+                self.push_span(gutter);
             }
 
             let style = self.inline_styles.last().copied().unwrap_or_default();
@@ -479,7 +599,8 @@ where
         if self.needs_newline {
             self.push_line(Line::default());
         }
-        self.push_line(Line::from("---"));
+        let rule_line = "\u{2500}".repeat(40);
+        self.push_line(Line::styled(rule_line, self.styles.rule()));
         self.needs_newline = true;
     }
 
@@ -555,13 +676,23 @@ where
         #[cfg(feature = "highlight-code")]
         self.set_code_highlighter(lang);
 
-        let span = Span::from(format!("```{lang}"));
+        // Opening fence: dim style
+        let fence_style = self.styles.code_fence();
+        let span = Span::styled(format!("```{lang}"), fence_style);
         self.push_line(span.into());
+
+        // Start line numbering
+        self.code_line_number = Some(0);
         self.needs_newline = true;
     }
 
     fn end_codeblock(&mut self) {
-        let span = Span::from("```");
+        // Stop line numbering before closing fence
+        self.code_line_number = None;
+
+        // Closing fence: dim style
+        let fence_style = self.styles.code_fence();
+        let span = Span::styled("```", fence_style);
         self.push_line(span.into());
         self.needs_newline = true;
 
@@ -746,28 +877,34 @@ where
         self.push_line(Line::default());
         self.push_span(Span::styled(format!("[{label}]: "), style));
         self.line_styles.push(style);
+        self.in_footnote_definition = true;
         self.needs_newline = false;
     }
 
     fn end_footnote_definition(&mut self) {
         self.line_styles.pop();
+        self.in_footnote_definition = false;
         self.needs_newline = true;
     }
 
     // --- Math ---
 
     fn inline_math(&mut self, math: CowStr<'a>) {
-        let style = self.styles.math_inline();
-        self.push_span(Span::styled(format!("${math}$"), style));
+        let delim_style = Style::new().dark_gray();
+        let content_style = self.styles.math_inline();
+        self.push_span(Span::styled("$", delim_style));
+        self.push_span(Span::styled(math, content_style));
+        self.push_span(Span::styled("$", delim_style));
     }
 
     fn display_math(&mut self, math: CowStr<'a>) {
         if self.needs_newline {
             self.push_line(Line::default());
         }
-        let style = self.styles.math_display();
+        let content_style = self.styles.math_display();
         self.push_line(Line::default());
-        self.push_span(Span::styled(format!("$${math}$$"), style));
+        self.push_span(Span::styled("  ", Style::default()));
+        self.push_span(Span::styled(math, content_style));
         self.needs_newline = true;
     }
 
@@ -799,7 +936,7 @@ where
 
     fn start_definition_desc(&mut self) {
         self.push_line(Line::default());
-        self.push_span(Span::from("  "));
+        self.push_span(Span::styled(": ", self.styles.definition_desc()));
         self.push_inline_style(self.styles.definition_desc());
         self.needs_newline = false;
     }
@@ -814,12 +951,32 @@ where
     fn start_image(&mut self, dest_url: CowStr<'a>) {
         self.image_url = Some(dest_url);
         self.image_had_alt = false;
-        self.push_inline_style(self.styles.image_alt());
+        if self.emit_image_blocks {
+            self.collecting_image_alt = true;
+            self.image_alt_buffer.clear();
+        } else {
+            self.push_inline_style(self.styles.image_alt());
+        }
     }
 
-    /// Render the image as alt-text fallback. If no alt text was collected, display the URL.
+    /// Render the image as alt-text fallback, or emit an image block.
     #[instrument(level = "trace", skip(self))]
     fn end_image(&mut self) {
+        if self.emit_image_blocks {
+            self.collecting_image_alt = false;
+            if let Some(url) = self.image_url.take() {
+                // Flush accumulated text before the image block.
+                self.flush_text_block();
+                self.content_blocks.push(MarkdownBlock::Image {
+                    url: url.into_string(),
+                    alt: std::mem::take(&mut self.image_alt_buffer),
+                    title: None,
+                });
+            }
+            self.image_had_alt = false;
+            return;
+        }
+
         self.pop_inline_style();
         if let Some(url) = self.image_url.take() {
             let style = self.styles.image_alt();
@@ -912,6 +1069,7 @@ mod tests {
 
     #[rstest]
     fn rule(_with_tracing: DefaultGuard) {
+        let rule_str = "\u{2500}".repeat(40);
         assert_eq!(
             from_str(indoc! {"
                 Paragraph 1
@@ -920,7 +1078,13 @@ mod tests {
 
                 Paragraph 2
             "}),
-            Text::from_iter(["Paragraph 1", "", "---", "", "Paragraph 2"])
+            Text::from_iter([
+                Line::from("Paragraph 1"),
+                Line::default(),
+                Line::styled(rule_str, Style::new().dark_gray()),
+                Line::default(),
+                Line::from("Paragraph 2"),
+            ])
         );
     }
 
@@ -997,7 +1161,7 @@ mod tests {
                 Text::from_iter([
                     Line::from("Hello, world!"),
                     Line::default(),
-                    Line::from_iter([">", " ", "Blockquote"]).style(STYLE),
+                    Line::from_iter(["\u{2502}", " ", "Blockquote"]).style(STYLE),
                 ])
             );
         }
@@ -1005,7 +1169,7 @@ mod tests {
         fn single(_with_tracing: DefaultGuard) {
             assert_eq!(
                 from_str("> Blockquote"),
-                Text::from(Line::from_iter([">", " ", "Blockquote"]).style(STYLE))
+                Text::from(Line::from_iter(["\u{2502}", " ", "Blockquote"]).style(STYLE))
             );
         }
 
@@ -1017,7 +1181,8 @@ mod tests {
                 > Blockquote 2
             "}),
                 Text::from(
-                    Line::from_iter([">", " ", "Blockquote 1", " ", "Blockquote 2"]).style(STYLE)
+                    Line::from_iter(["\u{2502}", " ", "Blockquote 1", " ", "Blockquote 2"])
+                        .style(STYLE),
                 )
             );
         }
@@ -1031,9 +1196,9 @@ mod tests {
                 > Blockquote 2
             "}),
                 Text::from_iter([
-                    Line::from_iter([">", " ", "Blockquote 1"]).style(STYLE),
-                    Line::from_iter([">", " "]).style(STYLE),
-                    Line::from_iter([">", " ", "Blockquote 2"]).style(STYLE),
+                    Line::from_iter(["\u{2502}", " ", "Blockquote 1"]).style(STYLE),
+                    Line::from_iter(["\u{2502}", " "]).style(STYLE),
+                    Line::from_iter(["\u{2502}", " ", "Blockquote 2"]).style(STYLE),
                 ])
             );
         }
@@ -1047,9 +1212,9 @@ mod tests {
                 > Blockquote 2
             "}),
                 Text::from_iter([
-                    Line::from_iter([">", " ", "Blockquote 1"]).style(STYLE),
+                    Line::from_iter(["\u{2502}", " ", "Blockquote 1"]).style(STYLE),
                     Line::default(),
-                    Line::from_iter([">", " ", "Blockquote 2"]).style(STYLE),
+                    Line::from_iter(["\u{2502}", " ", "Blockquote 2"]).style(STYLE),
                 ])
             );
         }
@@ -1062,9 +1227,10 @@ mod tests {
                 >> Nested Blockquote
             "}),
                 Text::from_iter([
-                    Line::from_iter([">", " ", "Blockquote 1"]).style(STYLE),
-                    Line::from_iter([">", " "]).style(STYLE),
-                    Line::from_iter([">", ">", " ", "Nested Blockquote"]).style(STYLE),
+                    Line::from_iter(["\u{2502}", " ", "Blockquote 1"]).style(STYLE),
+                    Line::from_iter(["\u{2502}", " "]).style(STYLE),
+                    Line::from_iter(["\u{2502}", "\u{2502}", " ", "Nested Blockquote"])
+                        .style(STYLE),
                 ])
             );
         }
@@ -1321,7 +1487,7 @@ mod tests {
         fn image_with_alt(_with_tracing: DefaultGuard) {
             assert_eq!(
                 from_str("![Alt text](https://example.com/image.png)"),
-                Text::from(Line::from(Span::styled("\u{1F5BC} Alt text", IMAGE_STYLE,)))
+                Text::from(Line::from(Span::styled("[img] Alt text", IMAGE_STYLE,)))
             );
         }
 
@@ -1330,7 +1496,7 @@ mod tests {
             assert_eq!(
                 from_str("![](https://example.com/image.png)"),
                 Text::from(Line::from(Span::styled(
-                    "\u{1F5BC} https://example.com/image.png",
+                    "[img] https://example.com/image.png",
                     IMAGE_STYLE,
                 )))
             );
@@ -1341,7 +1507,7 @@ mod tests {
             // Title is in the markdown syntax but the alt text is what we render.
             assert_eq!(
                 from_str("![Alt](https://example.com/img.png \"My Title\")"),
-                Text::from(Line::from(Span::styled("\u{1F5BC} Alt", IMAGE_STYLE)))
+                Text::from(Line::from(Span::styled("[img] Alt", IMAGE_STYLE)))
             );
         }
 
@@ -1351,7 +1517,7 @@ mod tests {
                 from_str("Before ![photo](url.png) after"),
                 Text::from(Line::from_iter([
                     Span::from("Before "),
-                    Span::styled("\u{1F5BC} photo", IMAGE_STYLE),
+                    Span::styled("[img] photo", IMAGE_STYLE),
                     Span::from(" after"),
                 ]))
             );
@@ -1410,16 +1576,24 @@ mod tests {
         }
 
         #[rstest]
-        fn inline_math_wrapped_in_dollars(_with_tracing: DefaultGuard) {
+        fn inline_math_has_dim_delimiters(_with_tracing: DefaultGuard) {
             let text = from_str("$\\alpha$");
             let line = &text.lines[0];
-            let math_span = line
+            // Delimiters should be separate dim spans.
+            let dollar_spans: Vec<_> = line
+                .spans
+                .iter()
+                .filter(|s| s.content.as_ref() == "$")
+                .collect();
+            assert_eq!(dollar_spans.len(), 2, "should have two $ delimiter spans");
+            assert_eq!(dollar_spans[0].style, Style::new().dark_gray());
+            // Content span should be magenta italic.
+            let content_span = line
                 .spans
                 .iter()
                 .find(|s| s.content.contains("\\alpha"))
-                .expect("math span");
-            assert!(math_span.content.starts_with('$'));
-            assert!(math_span.content.ends_with('$'));
+                .expect("math content span");
+            assert_eq!(content_span.style, Style::new().italic().fg(Color::Magenta));
         }
     }
 
@@ -1477,14 +1651,14 @@ mod tests {
                 Term
                 : Description here
             "});
-            // The definition line should start with indentation.
+            // The definition line should start with a colon prefix.
             let def_line = text
                 .lines
                 .iter()
                 .find(|l| l.spans.iter().any(|s| s.content.contains("Description")))
                 .expect("should have definition line");
-            let has_indent = def_line.spans.iter().any(|s| s.content.contains("  "));
-            assert!(has_indent, "definition should be indented");
+            let has_colon_prefix = def_line.spans.iter().any(|s| s.content.contains(": "));
+            assert!(has_colon_prefix, "definition should have colon prefix");
         }
     }
 

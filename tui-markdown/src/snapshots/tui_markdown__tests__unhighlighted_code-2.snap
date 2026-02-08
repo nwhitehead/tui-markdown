@@ -3,9 +3,18 @@ source: tui-markdown/src/lib.rs
 expression: unhiglighted_code
 ---
 Text::from_iter([
-    Line::from("```rust").white().on_black(),
-    Line::from("fn main() {").white().on_black(),
-    Line::from("    println!("Hello, unhighlighted code!");").white().on_black(),
-    Line::from("}").white().on_black(),
-    Line::from("```").white().on_black(),
+    Line::from(Span::from("```rust").dark_gray()).white().on_black(),
+    Line::from_iter([
+        Span::from("  1 │ ").dark_gray(),
+        Span::from("fn main() {"),
+    ]).white().on_black(),
+    Line::from_iter([
+        Span::from("  2 │ ").dark_gray(),
+        Span::from("    println!(\"Hello, unhighlighted code!\");"),
+    ]).white().on_black(),
+    Line::from_iter([
+        Span::from("  3 │ ").dark_gray(),
+        Span::from("}"),
+    ]).white().on_black(),
+    Line::from(Span::from("```").dark_gray()).white().on_black(),
 ])

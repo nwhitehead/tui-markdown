@@ -20,7 +20,7 @@ version: 1.0
 
 ## Text Formatting
 
-**Bold text**, *italic text*, ~~strikethrough~~, `inline code`, H~2~O (subscript), E=mc^2^ (superscript).
+**Bold text**, *italic text*, ~~strikethrough~~, `inline code`, H ~2~ O (subscript), E=mc ^2^ (superscript).
 
 Combined: ***bold italic***, **bold with `code`**, ~~strikethrough with *italic*~~
 

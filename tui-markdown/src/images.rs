@@ -11,7 +11,7 @@
 //! crate. This is not yet implemented.
 
 /// Image indicator prepended to alt text or URL in fallback mode.
-pub const IMAGE_INDICATOR: &str = "\u{1F5BC}";
+pub const IMAGE_INDICATOR: &str = "[img]";
 
 // TODO: When the `terminal-images` feature is implemented, add:
 // - Terminal capability detection (iTerm2, Kitty, Sixel)
