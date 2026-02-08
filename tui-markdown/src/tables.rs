@@ -7,6 +7,7 @@
 use pulldown_cmark::Alignment;
 use ratatui_core::style::Style;
 use ratatui_core::text::{Line, Span};
+use unicode_width::UnicodeWidthStr;
 
 use crate::StyleSheet;
 
@@ -192,12 +193,9 @@ impl<'a> TableBuilder<'a> {
         widths
     }
 
-    /// Calculate the display width of a slice of spans.
-    ///
-    /// Uses byte length as a proxy for display width. For accurate Unicode width, callers could
-    /// integrate `unicode-width`, but for typical ASCII table content this is sufficient.
+    /// Calculate the display width of a slice of spans using Unicode column widths.
     fn spans_width(spans: &[Span<'_>]) -> usize {
-        spans.iter().map(|s| s.content.len()).sum()
+        spans.iter().map(|s| s.content.width()).sum()
     }
 
     /// Calculate left and right padding for a cell given column width, content width, and alignment.
@@ -310,5 +308,12 @@ mod tests {
             Span::raw(" world"),
         ];
         assert_eq!(TableBuilder::spans_width(&spans), 11);
+    }
+
+    #[test]
+    fn emoji_spans_width() {
+        // ✅ is 2 display columns (not 3 bytes), 🟧 is also 2 display columns (not 4 bytes).
+        let spans = vec![Span::raw("✅"), Span::raw(" ok")];
+        assert_eq!(TableBuilder::spans_width(&spans), 5); // 2 + 3
     }
 }
