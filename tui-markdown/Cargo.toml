@@ -18,6 +18,9 @@ default = ["highlight-code"]
 ## Enable syntax highlighting using syntect and ansi-to-tui
 highlight-code = ["dep:syntect", "dep:ansi-to-tui"]
 
+## Enable inline terminal image rendering (future: dep:ratatui-image)
+terminal-images = []
+
 [package.metadata.docs.rs]
 all-features = true
 # see https://doc.rust-lang.org/nightly/rustdoc/scraped-examples.html

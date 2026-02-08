@@ -49,6 +49,18 @@ use crate::{DefaultStyleSheet, StyleSheet};
 ///     fn metadata_block(&self) -> Style {
 ///         Style::new().light_yellow()
 ///     }
+///
+///     fn image_alt(&self) -> Style {
+///         Style::new().dim().italic()
+///     }
+///
+///     fn table_header(&self) -> Style {
+///         Style::new().bold().cyan()
+///     }
+///
+///     fn table_border(&self) -> Style {
+///         Style::new().dark_gray()
+///     }
 /// }
 ///
 /// let options = Options::new(MyStyleSheet);
@@ -121,6 +133,18 @@ mod tests {
             fn metadata_block(&self) -> Style {
                 Style::new().light_yellow()
             }
+
+            fn image_alt(&self) -> Style {
+                Style::new().dim().italic()
+            }
+
+            fn table_header(&self) -> Style {
+                Style::new().bold().cyan()
+            }
+
+            fn table_border(&self) -> Style {
+                Style::new().dark_gray()
+            }
         }
 
         let options = Options {
@@ -134,5 +158,6 @@ mod tests {
         assert_eq!(options.styles.blockquote(), Style::new().yellow());
         assert_eq!(options.styles.heading_meta(), Style::new().dim());
         assert_eq!(options.styles.metadata_block(), Style::new().light_yellow());
+        assert_eq!(options.styles.image_alt(), Style::new().dim().italic());
     }
 }
