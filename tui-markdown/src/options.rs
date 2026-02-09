@@ -4,6 +4,9 @@
 //! code.  Use [`Options::new`] or [`Options::default`] to construct, and builder methods such as
 //! [`Options::code_theme`] to customise individual settings.
 
+#[cfg(feature = "highlight-code")]
+use std::path::Path;
+
 use crate::{DefaultStyleSheet, StyleSheet};
 
 /// Collection of optional parameters that influence markdown rendering.
@@ -80,6 +83,11 @@ pub struct Options<S: StyleSheet = DefaultStyleSheet> {
     ///
     /// Defaults to [`Self::DEFAULT_CODE_THEME`].
     pub(crate) code_theme: String,
+
+    /// Optional custom theme loaded from a `.tmTheme` file, taking precedence over
+    /// [`Self::code_theme`] when set.
+    #[cfg(feature = "highlight-code")]
+    pub(crate) code_theme_override: Option<syntect::highlighting::Theme>,
 }
 
 impl<S: StyleSheet> Options<S> {
@@ -91,6 +99,8 @@ impl<S: StyleSheet> Options<S> {
         Self {
             styles,
             code_theme: Self::DEFAULT_CODE_THEME.to_owned(),
+            #[cfg(feature = "highlight-code")]
+            code_theme_override: None,
         }
     }
 
@@ -105,6 +115,35 @@ impl<S: StyleSheet> Options<S> {
     /// Has no effect when the `highlight-code` feature is disabled.
     pub fn code_theme(mut self, theme_name: impl Into<String>) -> Self {
         self.code_theme = theme_name.into();
+        #[cfg(feature = "highlight-code")]
+        {
+            self.code_theme_override = None;
+        }
+        self
+    }
+
+    /// Load a custom syntax highlighting theme from a `.tmTheme` file.
+    ///
+    /// This takes precedence over the built-in theme set by [`Self::code_theme`].
+    /// Hundreds of `.tmTheme` files are available from editors like Sublime Text,
+    /// TextMate, and VS Code.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`syntect::LoadingError`] if the file cannot be read or parsed.
+    #[cfg(feature = "highlight-code")]
+    pub fn code_theme_file(mut self, path: impl AsRef<Path>) -> Result<Self, syntect::LoadingError> {
+        let theme = syntect::highlighting::ThemeSet::get_theme(path)?;
+        self.code_theme_override = Some(theme);
+        Ok(self)
+    }
+
+    /// Use a custom [`syntect::highlighting::Theme`] directly.
+    ///
+    /// This takes precedence over the built-in theme set by [`Self::code_theme`].
+    #[cfg(feature = "highlight-code")]
+    pub fn code_theme_custom(mut self, theme: syntect::highlighting::Theme) -> Self {
+        self.code_theme_override = Some(theme);
         self
     }
 }

@@ -56,6 +56,13 @@ pub use crate::content::{MarkdownBlock, MarkdownContent};
 pub use crate::options::Options;
 pub use crate::style_sheet::{DefaultStyleSheet, StyleSheet};
 
+// Re-export syntect types needed by the public API so consumers don't need a direct
+// syntect dependency.
+#[cfg(feature = "highlight-code")]
+pub use syntect::highlighting::Theme as SyntectTheme;
+#[cfg(feature = "highlight-code")]
+pub use syntect::LoadingError;
+
 mod content;
 mod images;
 mod options;
@@ -101,7 +108,13 @@ where
     parse_opts.insert(ParseOptions::ENABLE_DEFINITION_LIST);
     let parser = Parser::new_ext(input, parse_opts);
 
-    let mut writer = TextWriter::new(parser, options.styles.clone(), options.code_theme.clone());
+    let mut writer = TextWriter::new(
+        parser,
+        options.styles.clone(),
+        options.code_theme.clone(),
+        #[cfg(feature = "highlight-code")]
+        options.code_theme_override.clone(),
+    );
     writer.run();
     writer.text
 }
@@ -136,8 +149,13 @@ where
     parse_opts.insert(ParseOptions::ENABLE_DEFINITION_LIST);
     let parser = Parser::new_ext(input, parse_opts);
 
-    let mut writer =
-        TextWriter::with_image_blocks(parser, options.styles.clone(), options.code_theme.clone());
+    let mut writer = TextWriter::with_image_blocks(
+        parser,
+        options.styles.clone(),
+        options.code_theme.clone(),
+        #[cfg(feature = "highlight-code")]
+        options.code_theme_override.clone(),
+    );
     writer.run();
     writer.into_content()
 }
@@ -269,6 +287,11 @@ struct TextWriter<'a, I, S: StyleSheet> {
     #[cfg_attr(not(feature = "highlight-code"), allow(dead_code))]
     code_theme_name: String,
 
+    /// Optional custom theme that takes precedence over `code_theme_name`.
+    /// Stored as a leaked `&'static` reference so it satisfies the `HighlightLines<'a>` borrow.
+    #[cfg(feature = "highlight-code")]
+    code_theme_override: Option<&'static syntect::highlighting::Theme>,
+
     needs_newline: bool,
 }
 
@@ -282,15 +305,57 @@ where
     I: Iterator<Item = Event<'a>>,
     S: StyleSheet,
 {
-    fn new(iter: I, styles: S, code_theme_name: String) -> Self {
-        Self::create(iter, styles, false, code_theme_name)
+    fn new(
+        iter: I,
+        styles: S,
+        code_theme_name: String,
+        #[cfg(feature = "highlight-code")] code_theme_override: Option<
+            syntect::highlighting::Theme,
+        >,
+    ) -> Self {
+        Self::create(
+            iter,
+            styles,
+            false,
+            code_theme_name,
+            #[cfg(feature = "highlight-code")]
+            code_theme_override,
+        )
     }
 
-    fn with_image_blocks(iter: I, styles: S, code_theme_name: String) -> Self {
-        Self::create(iter, styles, true, code_theme_name)
+    fn with_image_blocks(
+        iter: I,
+        styles: S,
+        code_theme_name: String,
+        #[cfg(feature = "highlight-code")] code_theme_override: Option<
+            syntect::highlighting::Theme,
+        >,
+    ) -> Self {
+        Self::create(
+            iter,
+            styles,
+            true,
+            code_theme_name,
+            #[cfg(feature = "highlight-code")]
+            code_theme_override,
+        )
     }
 
-    fn create(iter: I, styles: S, emit_image_blocks: bool, code_theme_name: String) -> Self {
+    fn create(
+        iter: I,
+        styles: S,
+        emit_image_blocks: bool,
+        code_theme_name: String,
+        #[cfg(feature = "highlight-code")] code_theme_override: Option<
+            syntect::highlighting::Theme,
+        >,
+    ) -> Self {
+        // Leak the custom theme into a &'static reference so it can satisfy
+        // the HighlightLines<'a> borrow requirement. This is intentional —
+        // themes are small and typically live for the program's duration.
+        #[cfg(feature = "highlight-code")]
+        let code_theme_override =
+            code_theme_override.map(|t| &*Box::leak(Box::new(t)));
         Self {
             iter,
             text: Text::default(),
@@ -316,6 +381,8 @@ where
             collecting_image_alt: false,
             image_alt_buffer: String::new(),
             code_theme_name,
+            #[cfg(feature = "highlight-code")]
+            code_theme_override,
         }
     }
 
@@ -724,17 +791,22 @@ where
     fn set_code_highlighter(&mut self, lang: &str) {
         if let Some(syntax) = SYNTAX_SET.find_syntax_by_token(lang) {
             debug!("Starting code block with syntax: {:?}", lang);
-            let theme = THEME_SET
-                .themes
-                .get(&self.code_theme_name)
-                .unwrap_or_else(|| {
-                    warn!(
-                        "Theme {:?} not found, falling back to {:?}",
-                        self.code_theme_name,
-                        Options::<DefaultStyleSheet>::DEFAULT_CODE_THEME,
-                    );
-                    &THEME_SET.themes[Options::<DefaultStyleSheet>::DEFAULT_CODE_THEME]
-                });
+            let theme: &syntect::highlighting::Theme =
+                if let Some(custom) = &self.code_theme_override {
+                    custom
+                } else {
+                    THEME_SET
+                        .themes
+                        .get(&self.code_theme_name)
+                        .unwrap_or_else(|| {
+                            warn!(
+                                "Theme {:?} not found, falling back to {:?}",
+                                self.code_theme_name,
+                                Options::<DefaultStyleSheet>::DEFAULT_CODE_THEME,
+                            );
+                            &THEME_SET.themes[Options::<DefaultStyleSheet>::DEFAULT_CODE_THEME]
+                        })
+                };
             let highlighter = HighlightLines::new(syntax, theme);
             self.code_highlighter = Some(highlighter);
         } else {
