@@ -180,6 +180,8 @@ struct TextWriter<'a, I, S: StyleSheet> {
     in_metadata_block: bool,
 
     needs_newline: bool,
+
+    end_fence_style: Option<Style>,
 }
 
 #[cfg(feature = "highlight-code")]
@@ -207,6 +209,7 @@ where
             styles,
             heading_meta: None,
             in_metadata_block: false,
+            end_fence_style: None,
         }
     }
 
@@ -489,27 +492,36 @@ where
             CodeBlockKind::Indented => "",
         };
 
+        if let Some(style) = self.styles.fence(lang) {
+            let span = Span::from(format!("```{lang}"));
+            self.line_styles.push(style);
+            self.push_line(span.into());
+            self.line_styles.pop();
+            self.needs_newline = true;
+            self.end_fence_style = Some(style);
+        }
         #[cfg(not(feature = "highlight-code"))]
         self.line_styles.push(self.styles.code());
 
         #[cfg(feature = "highlight-code")]
         self.set_code_highlighter(lang);
-
-        let span = Span::from(format!("```{lang}"));
-        self.push_line(span.into());
-        self.needs_newline = true;
     }
 
     fn end_codeblock(&mut self) {
-        let span = Span::from("```");
-        self.push_line(span.into());
-        self.needs_newline = true;
-
         #[cfg(not(feature = "highlight-code"))]
         self.line_styles.pop();
 
         #[cfg(feature = "highlight-code")]
         self.clear_code_highlighter();
+
+        if let Some(style) = self.end_fence_style {
+            self.line_styles.push(style);
+            let span = Span::from("```");
+            self.push_line(span.into());
+            self.line_styles.pop();
+            self.end_fence_style = None;
+        }
+        self.needs_newline = true;
     }
 
     #[cfg(feature = "highlight-code")]

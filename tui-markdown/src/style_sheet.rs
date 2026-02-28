@@ -37,6 +37,9 @@ pub trait StyleSheet: Clone + Send + Sync + 'static {
 
     /// Style for metadata blocks (front matter).
     fn metadata_block(&self) -> Style;
+
+    /// Style for code fences (optional so we can not show them at all if desired)
+    fn fence(&self, language: &str) -> Option<Style>;
 }
 
 /// The default style set
@@ -86,5 +89,9 @@ impl StyleSheet for DefaultStyleSheet {
 
     fn metadata_block(&self) -> Style {
         Style::new().light_yellow()
+    }
+
+    fn fence(&self, _language: &str) -> Option<Style> {
+        Some(Style::new())
     }
 }

@@ -49,6 +49,10 @@ use crate::{DefaultStyleSheet, StyleSheet};
 ///     fn metadata_block(&self) -> Style {
 ///         Style::new().light_yellow()
 ///     }
+///
+///     fn fence(&self, _language: &str) -> Option<Style> {
+///         Some(Style::new())
+///     }
 /// }
 ///
 /// let options = Options::new(MyStyleSheet);
@@ -121,6 +125,10 @@ mod tests {
             fn metadata_block(&self) -> Style {
                 Style::new().light_yellow()
             }
+
+            fn fence(&self, _language: &str) -> Option<Style> {
+                None
+            }
         }
 
         let options = Options {
@@ -134,5 +142,6 @@ mod tests {
         assert_eq!(options.styles.blockquote(), Style::new().yellow());
         assert_eq!(options.styles.heading_meta(), Style::new().dim());
         assert_eq!(options.styles.metadata_block(), Style::new().light_yellow());
+        assert_eq!(options.styles.fence("python"), None);
     }
 }
