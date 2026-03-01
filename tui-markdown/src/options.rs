@@ -88,6 +88,9 @@ pub struct Options<S: StyleSheet = DefaultStyleSheet> {
     /// [`Self::code_theme`] when set.
     #[cfg(feature = "highlight-code")]
     pub(crate) code_theme_override: Option<syntect::highlighting::Theme>,
+
+    /// Whether to emit image blocks instead of inline alt text.
+    pub emit_image_blocks: bool,
 }
 
 impl<S: StyleSheet> Options<S> {
@@ -101,6 +104,7 @@ impl<S: StyleSheet> Options<S> {
             code_theme: Self::DEFAULT_CODE_THEME.to_owned(),
             #[cfg(feature = "highlight-code")]
             code_theme_override: None,
+            emit_image_blocks: false,
         }
     }
 

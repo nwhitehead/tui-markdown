@@ -148,8 +148,10 @@ where
     parse_opts.insert(ParseOptions::ENABLE_MATH);
     parse_opts.insert(ParseOptions::ENABLE_DEFINITION_LIST);
     let parser = Parser::new_ext(input, parse_opts);
+    let mut options = options.clone();
+    options.emit_image_blocks = true;
 
-    let mut writer = TextWriter::with_image_blocks(
+    let mut writer = TextWriter::new(
         parser,
         options.clone(),
         options.code_theme.clone(),
@@ -271,9 +273,6 @@ struct TextWriter<'a, I, S: StyleSheet> {
     /// Current line number inside a code block (Some(n) when inside, None otherwise).
     code_line_number: Option<u32>,
 
-    /// Whether to emit image blocks instead of inline alt text.
-    emit_image_blocks: bool,
-
     /// Accumulated content blocks when `emit_image_blocks` is true.
     content_blocks: Vec<MarkdownBlock<'a>>,
 
@@ -313,43 +312,6 @@ where
             syntect::highlighting::Theme,
         >,
     ) -> Self {
-        Self::create(
-            iter,
-            options,
-            false,
-            code_theme_name,
-            #[cfg(feature = "highlight-code")]
-            code_theme_override,
-        )
-    }
-
-    fn with_image_blocks(
-        iter: I,
-        options: Options<S>,
-        code_theme_name: String,
-        #[cfg(feature = "highlight-code")] code_theme_override: Option<
-            syntect::highlighting::Theme,
-        >,
-    ) -> Self {
-        Self::create(
-            iter,
-            options,
-            true,
-            code_theme_name,
-            #[cfg(feature = "highlight-code")]
-            code_theme_override,
-        )
-    }
-
-    fn create(
-        iter: I,
-        options: Options<S>,
-        emit_image_blocks: bool,
-        code_theme_name: String,
-        #[cfg(feature = "highlight-code")] code_theme_override: Option<
-            syntect::highlighting::Theme,
-        >,
-    ) -> Self {
         // Leak the custom theme into a &'static reference so it can satisfy
         // the HighlightLines<'a> borrow requirement. This is intentional —
         // themes are small and typically live for the program's duration.
@@ -376,7 +338,6 @@ where
             in_definition_list: false,
             in_footnote_definition: false,
             code_line_number: None,
-            emit_image_blocks,
             content_blocks: Vec::new(),
             collecting_image_alt: false,
             image_alt_buffer: String::new(),
@@ -391,7 +352,7 @@ where
         while let Some(event) = self.iter.next() {
             self.handle_event(event);
         }
-        if self.emit_image_blocks {
+        if self.options.emit_image_blocks {
             self.flush_text_block();
         }
     }
@@ -1049,7 +1010,7 @@ where
     fn start_image(&mut self, dest_url: CowStr<'a>) {
         self.image_url = Some(dest_url);
         self.image_had_alt = false;
-        if self.emit_image_blocks {
+        if self.options.emit_image_blocks {
             self.collecting_image_alt = true;
             self.image_alt_buffer.clear();
         } else {
@@ -1060,7 +1021,7 @@ where
     /// Render the image as alt-text fallback, or emit an image block.
     #[instrument(level = "trace", skip(self))]
     fn end_image(&mut self) {
-        if self.emit_image_blocks {
+        if self.options.emit_image_blocks {
             self.collecting_image_alt = false;
             if let Some(url) = self.image_url.take() {
                 // Flush accumulated text before the image block.
