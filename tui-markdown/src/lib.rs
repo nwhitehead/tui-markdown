@@ -110,7 +110,7 @@ where
 
     let mut writer = TextWriter::new(
         parser,
-        options.styles.clone(),
+        options.clone(),
         options.code_theme.clone(),
         #[cfg(feature = "highlight-code")]
         options.code_theme_override.clone(),
@@ -151,7 +151,7 @@ where
 
     let mut writer = TextWriter::with_image_blocks(
         parser,
-        options.styles.clone(),
+        options.clone(),
         options.code_theme.clone(),
         #[cfg(feature = "highlight-code")]
         options.code_theme_override.clone(),
@@ -251,7 +251,7 @@ struct TextWriter<'a, I, S: StyleSheet> {
     image_had_alt: bool,
 
     /// The [`StyleSheet`] to use to style the output.
-    styles: S,
+    options: Options<S>,
 
     /// Heading attributes to append after heading content.
     heading_meta: Option<HeadingMeta<'a>>,
@@ -307,7 +307,7 @@ where
 {
     fn new(
         iter: I,
-        styles: S,
+        options: Options<S>,
         code_theme_name: String,
         #[cfg(feature = "highlight-code")] code_theme_override: Option<
             syntect::highlighting::Theme,
@@ -315,7 +315,7 @@ where
     ) -> Self {
         Self::create(
             iter,
-            styles,
+            options,
             false,
             code_theme_name,
             #[cfg(feature = "highlight-code")]
@@ -325,7 +325,7 @@ where
 
     fn with_image_blocks(
         iter: I,
-        styles: S,
+        options: Options<S>,
         code_theme_name: String,
         #[cfg(feature = "highlight-code")] code_theme_override: Option<
             syntect::highlighting::Theme,
@@ -333,7 +333,7 @@ where
     ) -> Self {
         Self::create(
             iter,
-            styles,
+            options,
             true,
             code_theme_name,
             #[cfg(feature = "highlight-code")]
@@ -343,7 +343,7 @@ where
 
     fn create(
         iter: I,
-        styles: S,
+        options: Options<S>,
         emit_image_blocks: bool,
         code_theme_name: String,
         #[cfg(feature = "highlight-code")] code_theme_override: Option<
@@ -369,7 +369,7 @@ where
             link: None,
             image_url: None,
             image_had_alt: false,
-            styles,
+            options,
             heading_meta: None,
             in_metadata_block: false,
             table_builder: None,
@@ -520,7 +520,7 @@ where
             HeadingLevel::H5 => 5,
             HeadingLevel::H6 => 6,
         };
-        let style = self.styles.heading(heading_level);
+        let style = self.options.styles.heading(heading_level);
         let content = format!("{} ", "#".repeat(heading_level as usize));
         self.push_line(Line::styled(content, style));
         self.heading_meta = heading_meta.into_option();
@@ -530,7 +530,7 @@ where
     fn end_heading(&mut self) {
         if let Some(meta) = self.heading_meta.take() {
             if let Some(suffix) = meta.to_suffix() {
-                self.push_span(Span::styled(suffix, self.styles.heading_meta()));
+                self.push_span(Span::styled(suffix, self.options.styles.heading_meta()));
             }
         }
         self.needs_newline = true
@@ -550,7 +550,7 @@ where
                 BlockQuoteKind::Warning => ("\u{26A0}\u{FE0F}", "warning"),
                 BlockQuoteKind::Caution => ("\u{1F534}", "caution"),
             };
-            let style = self.styles.alert(kind_str);
+            let style = self.options.styles.alert(kind_str);
             self.line_prefixes.push(Span::from("\u{2502}"));
             self.line_styles.push(style);
             // Render the alert header line.
@@ -563,7 +563,7 @@ where
             self.needs_newline = false;
         } else {
             self.line_prefixes.push(Span::from("\u{2502}"));
-            self.line_styles.push(self.styles.blockquote());
+            self.line_styles.push(self.options.styles.blockquote());
         }
     }
 
@@ -603,7 +603,7 @@ where
             for line in text.lines {
                 if let Some(num) = &mut self.code_line_number {
                     *num += 1;
-                    let gutter_style = self.styles.code_line_number();
+                    let gutter_style = self.options.styles.code_line_number();
                     let gutter = Span::styled(format!("{:>3} \u{2502} ", num), gutter_style);
                     let mut new_line = Line::default();
                     new_line.push_span(gutter);
@@ -631,7 +631,7 @@ where
             // Add line number gutter for code blocks.
             if let Some(num) = &mut self.code_line_number {
                 *num += 1;
-                let gutter_style = self.styles.code_line_number();
+                let gutter_style = self.options.styles.code_line_number();
                 let gutter = Span::styled(format!("{:>3} \u{2502} ", num), gutter_style);
                 self.push_span(gutter);
             }
@@ -648,10 +648,10 @@ where
     fn code(&mut self, code: CowStr<'a>) {
         // Redirect to table builder if active.
         if let Some(builder) = &mut self.table_builder {
-            builder.push_span(Span::styled(code.into_string(), self.styles.code()));
+            builder.push_span(Span::styled(code.into_string(), self.options.styles.code()));
             return;
         }
-        let span = Span::styled(code, self.styles.code());
+        let span = Span::styled(code, self.options.styles.code());
         self.push_span(span);
     }
 
@@ -663,7 +663,7 @@ where
         if self.needs_newline {
             self.push_line(Line::default());
         }
-        self.line_styles.push(self.styles.metadata_block());
+        self.line_styles.push(self.options.styles.metadata_block());
         self.push_line(Line::from("---"));
         self.push_line(Line::default());
         self.in_metadata_block = true;
@@ -683,7 +683,7 @@ where
             self.push_line(Line::default());
         }
         let rule_line = "\u{2500}".repeat(40);
-        self.push_line(Line::styled(rule_line, self.styles.rule()));
+        self.push_line(Line::styled(rule_line, self.options.styles.rule()));
         self.needs_newline = true;
     }
 
@@ -754,13 +754,13 @@ where
         };
 
         #[cfg(not(feature = "highlight-code"))]
-        self.line_styles.push(self.styles.code());
+        self.line_styles.push(self.options.styles.code());
 
         #[cfg(feature = "highlight-code")]
         self.set_code_highlighter(lang);
 
         // Opening fence: dim style
-        let fence_style = self.styles.code_fence();
+        let fence_style = self.options.styles.code_fence();
         let span = Span::styled(format!("```{lang}"), fence_style);
         self.push_line(span.into());
 
@@ -774,7 +774,7 @@ where
         self.code_line_number = None;
 
         // Closing fence: dim style
-        let fence_style = self.styles.code_fence();
+        let fence_style = self.options.styles.code_fence();
         let span = Span::styled("```", fence_style);
         self.push_line(span.into());
         self.needs_newline = true;
@@ -864,7 +864,7 @@ where
     #[instrument(level = "trace", skip(self))]
     fn push_link(&mut self, dest_url: CowStr<'a>) {
         self.link = Some(dest_url);
-        self.push_inline_style(self.styles.link());
+        self.push_inline_style(self.options.styles.link());
     }
 
     /// Pop the link style and append the link URL to the current line.
@@ -873,7 +873,7 @@ where
         self.pop_inline_style();
         if let Some(link) = self.link.take() {
             self.push_span(" (".into());
-            self.push_span(Span::styled(link, self.styles.link()));
+            self.push_span(Span::styled(link, self.options.styles.link()));
             self.push_span(")".into());
         }
     }
@@ -919,7 +919,7 @@ where
 
     fn end_table(&mut self) {
         if let Some(builder) = self.table_builder.take() {
-            let lines = builder.render(&self.styles);
+            let lines = builder.render(&self.options.styles);
             for line in lines {
                 self.push_line(line);
             }
@@ -934,7 +934,7 @@ where
             self.push_line(Line::default());
         }
         self.push_line(Line::default());
-        self.line_styles.push(self.styles.html());
+        self.line_styles.push(self.options.styles.html());
         self.needs_newline = false;
     }
 
@@ -944,7 +944,7 @@ where
     }
 
     fn html_block(&mut self, html: CowStr<'a>) {
-        let style = self.styles.html();
+        let style = self.options.styles.html();
         for line in html.lines() {
             if self.needs_newline {
                 self.push_line(Line::default());
@@ -956,14 +956,14 @@ where
     }
 
     fn inline_html(&mut self, html: CowStr<'a>) {
-        let style = self.styles.html();
+        let style = self.options.styles.html();
         self.push_span(Span::styled(html, style));
     }
 
     // --- Footnotes ---
 
     fn footnote_reference(&mut self, label: CowStr<'a>) {
-        let style = self.styles.footnote_ref();
+        let style = self.options.styles.footnote_ref();
         self.push_span(Span::styled(format!("[{label}]"), style));
     }
 
@@ -971,7 +971,7 @@ where
         if self.needs_newline {
             self.push_line(Line::default());
         }
-        let style = self.styles.footnote_def();
+        let style = self.options.styles.footnote_def();
         self.push_line(Line::default());
         self.push_span(Span::styled(format!("[{label}]: "), style));
         self.line_styles.push(style);
@@ -989,7 +989,7 @@ where
 
     fn inline_math(&mut self, math: CowStr<'a>) {
         let delim_style = Style::new().dark_gray();
-        let content_style = self.styles.math_inline();
+        let content_style = self.options.styles.math_inline();
         self.push_span(Span::styled("$", delim_style));
         self.push_span(Span::styled(math, content_style));
         self.push_span(Span::styled("$", delim_style));
@@ -999,7 +999,7 @@ where
         if self.needs_newline {
             self.push_line(Line::default());
         }
-        let content_style = self.styles.math_display();
+        let content_style = self.options.styles.math_display();
         self.push_line(Line::default());
         self.push_span(Span::styled("  ", Style::default()));
         self.push_span(Span::styled(math, content_style));
@@ -1023,7 +1023,7 @@ where
 
     fn start_definition_title(&mut self) {
         self.push_line(Line::default());
-        self.push_inline_style(self.styles.definition_title());
+        self.push_inline_style(self.options.styles.definition_title());
         self.needs_newline = false;
     }
 
@@ -1034,8 +1034,8 @@ where
 
     fn start_definition_desc(&mut self) {
         self.push_line(Line::default());
-        self.push_span(Span::styled(": ", self.styles.definition_desc()));
-        self.push_inline_style(self.styles.definition_desc());
+        self.push_span(Span::styled(": ", self.options.styles.definition_desc()));
+        self.push_inline_style(self.options.styles.definition_desc());
         self.needs_newline = false;
     }
 
@@ -1053,7 +1053,7 @@ where
             self.collecting_image_alt = true;
             self.image_alt_buffer.clear();
         } else {
-            self.push_inline_style(self.styles.image_alt());
+            self.push_inline_style(self.options.styles.image_alt());
         }
     }
 
@@ -1077,7 +1077,7 @@ where
 
         self.pop_inline_style();
         if let Some(url) = self.image_url.take() {
-            let style = self.styles.image_alt();
+            let style = self.options.styles.image_alt();
             let prefix = format!("{} ", images::IMAGE_INDICATOR);
             if self.image_had_alt {
                 // Alt text was already rendered by text(). Prepend the image indicator.
