@@ -721,9 +721,11 @@ where
         self.set_code_highlighter(lang);
 
         // Opening fence: dim style
-        let fence_style = self.options.styles.code_fence();
-        let span = Span::styled(format!("```{lang}"), fence_style);
-        self.push_line(span.into());
+        if self.options.show_code_fence {
+            let fence_style = self.options.styles.code_fence();
+            let span = Span::styled(format!("```{lang}"), fence_style);
+            self.push_line(span.into());
+        }
 
         // Start line numbering
         self.code_line_number = Some(0);
@@ -735,10 +737,12 @@ where
         self.code_line_number = None;
 
         // Closing fence: dim style
-        let fence_style = self.options.styles.code_fence();
-        let span = Span::styled("```", fence_style);
-        self.push_line(span.into());
-        self.needs_newline = true;
+        if self.options.show_code_fence {
+            let fence_style = self.options.styles.code_fence();
+            let span = Span::styled("```", fence_style);
+            self.push_line(span.into());
+            self.needs_newline = true;
+        }
 
         #[cfg(not(feature = "highlight-code"))]
         self.line_styles.pop();

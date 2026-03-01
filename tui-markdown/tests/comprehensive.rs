@@ -284,6 +284,7 @@ fn fenced_code_block() {
         .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
         .collect();
     assert!(flat.contains("hello"));
+    assert!(flat.contains("```"));
 }
 
 #[test]
@@ -295,6 +296,20 @@ fn fenced_code_block_with_lang() {
         .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
         .collect();
     assert!(flat.contains("rust") || flat.contains("let"));
+}
+
+#[test]
+fn fenced_code_block_no_fence() {
+    let mut options = tui_markdown::Options::default();
+    options.show_code_fence = false;
+    let text = tui_markdown::from_str_with_options("```\nhello\n```", &options);
+    let flat: String = text
+        .lines
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+        .collect();
+    assert!(flat.contains("hello"));
+    assert!(!flat.contains("```"));
 }
 
 // ---------------------------------------------------------------------------

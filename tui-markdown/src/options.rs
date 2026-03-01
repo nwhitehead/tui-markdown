@@ -91,6 +91,9 @@ pub struct Options<S: StyleSheet = DefaultStyleSheet> {
 
     /// Whether to emit image blocks instead of inline alt text.
     pub emit_image_blocks: bool,
+
+    /// Whether to show code fence marks
+    pub show_code_fence: bool,
 }
 
 impl<S: StyleSheet> Options<S> {
@@ -105,6 +108,7 @@ impl<S: StyleSheet> Options<S> {
             #[cfg(feature = "highlight-code")]
             code_theme_override: None,
             emit_image_blocks: false,
+            show_code_fence: true,
         }
     }
 
