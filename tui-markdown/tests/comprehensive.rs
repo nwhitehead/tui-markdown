@@ -56,6 +56,23 @@ fn heading_levels() {
     assert!(flat.contains("H1"));
     assert!(flat.contains("H2"));
     assert!(flat.contains("H3"));
+    assert!(flat.contains("###"));
+}
+
+#[test]
+fn heading_levels_no_marks() {
+    let mut options = tui_markdown::Options::default();
+    options.show_header_marks = false;
+    let text = tui_markdown::from_str_with_options("# H1\n## H2\n### H3", &options);
+    let flat: String = text
+        .lines
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+        .collect();
+    assert!(flat.contains("H1"));
+    assert!(flat.contains("H2"));
+    assert!(flat.contains("H3"));
+    assert!(!flat.contains("#"));
 }
 
 #[test]

@@ -482,7 +482,11 @@ where
             HeadingLevel::H6 => 6,
         };
         let style = self.options.styles.heading(heading_level);
-        let content = format!("{} ", "#".repeat(heading_level as usize));
+        let content = if self.options.show_header_marks {
+            format!("{} ", "#".repeat(heading_level as usize))
+        } else {
+            "".to_string()
+        };
         self.push_line(Line::styled(content, style));
         self.heading_meta = heading_meta.into_option();
         self.needs_newline = false;
