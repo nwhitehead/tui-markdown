@@ -162,6 +162,28 @@ impl<S: StyleSheet> Options<S> {
         self.code_theme_override = Some(theme);
         self
     }
+
+    /// Set some options with chaining
+    pub fn with_emit_imgage_blocks(&self, emit_image_blocks: bool) -> Self {
+        let mut result = self.clone();
+        result.emit_image_blocks = emit_image_blocks;
+        result
+    }
+    pub fn with_show_code_fence(&self, show_code_fence: bool) -> Self {
+        let mut result = self.clone();
+        result.show_code_fence = show_code_fence;
+        result
+    }
+    pub fn with_show_math_marks(&self, show_math_marks: bool) -> Self {
+        let mut result = self.clone();
+        result.show_math_marks = show_math_marks;
+        result
+    }
+    pub fn with_show_header_marks(&self, show_header_marks: bool) -> Self {
+        let mut result = self.clone();
+        result.show_header_marks = show_header_marks;
+        result
+    }
 }
 
 impl Default for Options<DefaultStyleSheet> {

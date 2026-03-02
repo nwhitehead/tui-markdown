@@ -61,8 +61,7 @@ fn heading_levels() {
 
 #[test]
 fn heading_levels_no_marks() {
-    let mut options = tui_markdown::Options::default();
-    options.show_header_marks = false;
+    let options = tui_markdown::Options::default().with_show_header_marks(false);
     let text = tui_markdown::from_str_with_options("# H1\n## H2\n### H3", &options);
     let flat: String = text
         .lines
@@ -317,8 +316,7 @@ fn fenced_code_block_with_lang() {
 
 #[test]
 fn fenced_code_block_no_fence() {
-    let mut options = tui_markdown::Options::default();
-    options.show_code_fence = false;
+    let options = tui_markdown::Options::default().with_show_code_fence(false);
     let text = tui_markdown::from_str_with_options("```\nhello\n```", &options);
     let flat: String = text
         .lines
@@ -529,8 +527,7 @@ fn inline_math() {
 
 #[test]
 fn inline_math_no_marks() {
-    let mut options = tui_markdown::Options::default();
-    options.show_math_marks = false;
+    let options = tui_markdown::Options::default().with_show_math_marks(false);
     let text = tui_markdown::from_str_with_options("The formula $E=mc^2$ is famous.", &options);
     let flat = collect_text(&text);
     assert!(flat.contains("E=mc^2"), "inline math should render formula");
