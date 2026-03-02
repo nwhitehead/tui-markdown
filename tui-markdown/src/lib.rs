@@ -745,8 +745,8 @@ where
             let fence_style = self.options.styles.code_fence();
             let span = Span::styled("```", fence_style);
             self.push_line(span.into());
-            self.needs_newline = true;
         }
+        self.needs_newline = true;
 
         #[cfg(not(feature = "highlight-code"))]
         self.line_styles.pop();
