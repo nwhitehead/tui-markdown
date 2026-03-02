@@ -97,6 +97,9 @@ pub struct Options<S: StyleSheet = DefaultStyleSheet> {
 
     /// Whether to show header marks
     pub show_header_marks: bool,
+
+    /// Whether to show math marks
+    pub show_math_marks: bool,
 }
 
 impl<S: StyleSheet> Options<S> {
@@ -113,6 +116,7 @@ impl<S: StyleSheet> Options<S> {
             emit_image_blocks: false,
             show_code_fence: true,
             show_header_marks: true,
+            show_math_marks: true,
         }
     }
 

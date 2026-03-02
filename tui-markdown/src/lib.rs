@@ -959,9 +959,13 @@ where
     fn inline_math(&mut self, math: CowStr<'a>) {
         let delim_style = Style::new().dark_gray();
         let content_style = self.options.styles.math_inline();
-        self.push_span(Span::styled("$", delim_style));
+        if self.options.show_math_marks {
+            self.push_span(Span::styled("$", delim_style));
+        }
         self.push_span(Span::styled(math, content_style));
-        self.push_span(Span::styled("$", delim_style));
+        if self.options.show_math_marks {
+            self.push_span(Span::styled("$", delim_style));
+        }
     }
 
     fn display_math(&mut self, math: CowStr<'a>) {

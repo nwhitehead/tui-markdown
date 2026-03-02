@@ -524,6 +524,17 @@ fn inline_math() {
     let text = tui_markdown::from_str("The formula $E=mc^2$ is famous.");
     let flat = collect_text(&text);
     assert!(flat.contains("E=mc^2"), "inline math should render formula");
+    assert!(flat.contains("$"), "should contain math marks by default");
+}
+
+#[test]
+fn inline_math_no_marks() {
+    let mut options = tui_markdown::Options::default();
+    options.show_math_marks = false;
+    let text = tui_markdown::from_str_with_options("The formula $E=mc^2$ is famous.", &options);
+    let flat = collect_text(&text);
+    assert!(flat.contains("E=mc^2"), "inline math should render formula");
+    assert!(!flat.contains("$"), "should not contain math marks");
 }
 
 #[test]
@@ -531,6 +542,7 @@ fn display_math() {
     let text = tui_markdown::from_str("$$\nx^2 + y^2 = z^2\n$$");
     let flat = collect_text(&text);
     assert!(flat.contains("x^2"), "display math should render formula");
+    assert!(!flat.contains("$$"), "should not contain math marks by default");
 }
 
 #[test]
