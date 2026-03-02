@@ -732,7 +732,9 @@ where
         }
 
         // Start line numbering
-        self.code_line_number = Some(0);
+        if self.options.show_code_line_numbers {
+            self.code_line_number = Some(0);
+        }
         self.needs_newline = true;
     }
 

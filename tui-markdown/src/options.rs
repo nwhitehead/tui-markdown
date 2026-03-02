@@ -100,6 +100,9 @@ pub struct Options<S: StyleSheet = DefaultStyleSheet> {
 
     /// Whether to show math marks
     pub show_math_marks: bool,
+
+    /// Whether to show line numbers in code blocks
+    pub show_code_line_numbers: bool,
 }
 
 impl<S: StyleSheet> Options<S> {
@@ -117,6 +120,7 @@ impl<S: StyleSheet> Options<S> {
             show_code_fence: true,
             show_header_marks: true,
             show_math_marks: true,
+            show_code_line_numbers: true,
         }
     }
 
@@ -182,6 +186,11 @@ impl<S: StyleSheet> Options<S> {
     pub fn with_show_header_marks(&self, show_header_marks: bool) -> Self {
         let mut result = self.clone();
         result.show_header_marks = show_header_marks;
+        result
+    }
+    pub fn with_show_code_line_numbers(&self, show_code_line_numbers: bool) -> Self {
+        let mut result = self.clone();
+        result.show_code_line_numbers = show_code_line_numbers;
         result
     }
 }

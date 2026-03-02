@@ -315,6 +315,30 @@ fn fenced_code_block_with_lang() {
 }
 
 #[test]
+fn fenced_code_block_with_line_numbers() {
+    let options = tui_markdown::Options::default().with_show_code_line_numbers(true);
+    let text = tui_markdown::from_str("```rust\nlet x = 42;\n```");
+    let flat: String = text
+        .lines
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+        .collect();
+    assert!(flat.contains("1"));
+}
+
+#[test]
+fn fenced_code_block_without_line_numbers() {
+    let options = tui_markdown::Options::default().with_show_code_line_numbers(false);
+    let text = tui_markdown::from_str_with_options("```rust\nlet x = 42;\n```", &options);
+    let flat: String = text
+        .lines
+        .iter()
+        .flat_map(|l| l.spans.iter().map(|s| s.content.as_ref()))
+        .collect();
+    assert!(!flat.contains("1"));
+}
+
+#[test]
 fn fenced_code_block_no_fence() {
     let options = tui_markdown::Options::default().with_show_code_fence(false);
     let text = tui_markdown::from_str_with_options("```\nhello\n```", &options);
